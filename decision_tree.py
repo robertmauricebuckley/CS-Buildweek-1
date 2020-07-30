@@ -1,147 +1,116 @@
-class Leaf:
-    def __init__(self, name=None, gini_score=None, samples=None, values=None):
-        self.name = name
-        self.gini_score = gini_score
-        self.samples = samples
-        self.values = values
-    
+import numpy as np
+import pandas as pd
+from sklearn.datasets import load_iris, load_wine
+from sklearn.model_selection import train_test_split
 
-class Node(Leaf): # 
-    def __init__(self, name=None, left=None, right=None, gini_score=None, samples=None, values=None):
-        self.left = left # will be an instance of Leaf() and or later become Node()
-        self.right = right # will be an instance of Leaf() and or later become Node()
-        super().__init__(name, gini_score, samples, values) 
+class Node:  #
+    def __init__(self, gini, samples, samples_per_class, predicted_class):
+        self.gini = gini
+        self.samples = samples
+        self.samples_per_class = samples_per_class
+        self.predicted_class = predicted_class
+        self.feature_index = 0
+        self.split = 0
+        self.left = None
+        self.right = None
+
 
 class Decision_Tree:
-    def __init__(self, node=None):
-        self.node = node
+    def __init__(self, max_depth=None):
+        self.max_depth = max_depth
 
-    """Make two methods
-    MVP will be classification model
-    1. fit
-        - parameters that it needs to take in.
-            - data
-                - dataframes only
-            - indicate features 
-            - indicate labeled column
+    def _gini(self, y):
 
-    2. predict
-        - parameters that it needs to take in.
-            - data
-                - dataframes only
-        - output
-            - dataframe
-            - single column
-    """
+        m = y.size
+        return 1.0 - sum((np.sum(y == c) / m) ** 2 for c in range(self.num_outcomes))
+
+    def find_split(self, X, y):
+
+        choices = y.size
+        if choices <= 1:
+            return None, None
+
+        # find the number of each option in the current node.
+        options_parent = [np.sum(y == c) for c in range(self.num_outcomes)]
+
+        # find the gini of current node.
+        best_gini = 1.0 - sum((n / choices) ** 2 for n in options_parent)
+        best_idx, best_split = None, None
+
+        # loop through the features to get splits and options.
+        for idx in range(self.num_features):
+            splits, options = zip(*sorted(zip(X[:, idx], y)))
+
+            num_left = [0] * self.num_features
+            num_right = options_parent.copy()
+            for i in range(1, m):
+                c = options[i - 1]
+                num_left[c] += 1
+                num_right[c] -= 1
+                gini_left = 1.0 - sum(
+                    (num_left[x] / i) ** 2 for x in range(self.num_outcomes)
+                )
+                gini_right = 1.0 - sum(
+                    (num_right[x] / i) ** 2 for x in range(self.num_outcomes)
+                )
+
+                gini = (i * gini_left + (m - i) * gini_right) / m
+
+                if splits[i] == splits[i - 1]:
+                    continue
+
+                if gini < best_gini:
+                    best_gini = gini
+                    best_idx = idx
+                    best_split = (splits[i] + splits[i - 1]) / 2
+
+        return best_idx, best_split
+
+    def fit(self, X, y):
+        self.num_outcomes = len(set(y))
+        self.num_features = X.shape[1]
+        self.tree_ = self.grow_tree(X, y)
+
+    def extd_tree(self, X, y, depth=0):
+        samples_per_class = [np.sum(y == i) for i in range(self.num_features)]
+        predicted_class = np.argmax(samples_per_class)
+        node = Node(
+            gini=self._gini(y),
+            samples=y.size,
+            samples_per_class=samples_per_class,
+            predicted_class=predicted_class,
+        )
+
+        if depth < self.max_depth:
+            idx, splt = self.find_split(X, y)
+            if idx is not None:
+                indices_left = X[:, idx] < splt
+                X_left, y_left = X[indices_left], y[indices_left]
+                X_right, y_right = X[~indices_left], y[~indices_left]
+                node.feature_index = idx
+                node.threshold = splt
+                node.left = self._grow_tree(X_left, y_left, depth + 1)
+                node.right = self._grow_tree(X_right, y_right, depth + 1)
+        return node
+
+    def predict(self, X):
+        return [self._predict(inputs) for inputs in X]
+
+    def _predict(self, inputs):
+        """Predict class for a single sample."""
+        node = self.tree_
+        while node.left:
+            if inputs[node.feature_index] < node.split:
+                node = node.left
+            else:
+                node = node.right
+        return node.predicted_class
 
 
-    """Helper methods to be used in fit() method:
-    """
-    def creat_root_node(self):
-        """creat new instance of Node(),
-        that become root/first node of tree
-        """
-        pass
-
-    def add_leaf(self):
-        """create new instance of Leaf()
-
-        """
-        pass
-    
-    def change_to_node(self):
-        """switch a leaf to a node.
-
-        """
-        pass
-    
-    def find_gini(self, x_column, split_value):
-        feature = data[[x_column, y_column]]
-        feature_true =  feature[feature[x_column] == split_value]
-        gini_score_t = 1
-        for i in (feature_true[y_column].unique()):
-        # print(i)
-            gini_score_t -= ((feature_true[y_column].values == i).sum()/len(feature_true.index))**2
-
-        feature_false =  feature[feature[x_column] != split_value]
-        gini_score_f = 1
-        for i in (feature_false[y_column].unique()):
-        # print(i)
-            gini_score_f -= ((feature_false[y_column].values == i).sum()/len(feature_false.index))**2
-
-        gini_score = ((len(feature_true.index)/(len(feature.index)))* gini_score_t) + ((len(feature_false.index)/(len(feature.index)))* gini_score_f)
-
-        return gini_score
-
-        
-
-
-    def fit(self, data, x_columns, y_column):
-        
-        """Steps:
-        Yes/no data:
-        Find the first node
-            -find the impurity score for each feature
-                - using Gini impurity
-        - first node (root of tree) will be the the feature with the best Gini score (lowest)
-        - when lowest gini score is found:
-            - instantiate new Node:
-
-        - repeat process from remaining features untill current leaf's gini impurity score
-        is less than any remaining options
-        steps for finding value to split a node on:
-        - order the values
-        Numeric data:
-        - find the average value of the adjecent values
-                - ie 1) 8, average:9, 2) 10, average: 12, 3) 14
-            - calculate impuirity value for each average value 
-                - ie, weight < 12 
-            - use the lower gini value from each of the averages to compare to the 
-            other features' gini values
-                - it will also become where we split the node if chosen as next
-        Ranked data:
-        - similar to numeric data, but don't find average this time
-        - find gini for each rank value, except not the last one.
-            - ie rank <= 1, rank <= 2, ...
-        Multiple-choice data:
-        - find gini score for all possible combination of choices.
-            - ie choice: Blue, choice: Green, choice: Red, choice: Blue or Green
-                choice, Blue or Red, choice: Green or Red.
-
-        creating nodes/leaves:
-            - features
-                - name/value (feature),
-                - left (name= True)
-                - right (name = False)
-                - gini score
-                - number of samples that was fit to model
-                - values of labeled y. array form [50, 50], which would be the results
-                    from the split of previous node
-            leaf:
-                - features
-                    - name/value (a labeled y value)
-                    - gini score
-                    - number of samples
-                    - values of labeled y. array form. results from previous
-                        node split.
-
-        
-
-        """
-        # defining the two binary classifiers:
-        a_cls, b_cls = data[y_column].unique()
-
-        # find root node of tree:
-        for i in x_columns:
-            find_gini(i, )
-    
-    def predict(self, parameter_list):
-        pass
-        """
-        for each row of values given:
-            return the leaf value
-            - it does this by following the nodes until a leaf is reached.
-                - leaf is defined as left and right are None.
-                - or defined not being a node?
-                - 
-        """
+dataset = load_wine()
+X, y = dataset.data, dataset.target
+X_train, X_test, y_train, y_test = train_test_split(X,y, stratify=y, random_state=42)
+clf_wine = Decision_Tree(max_depth = 5)
+clf_wine.fit(X_train, y_train)
+# preds = clf_wine._predict(X_test, multi_obs=True)
+# print(str(clf_wine))
