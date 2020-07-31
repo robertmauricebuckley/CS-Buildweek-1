@@ -1,7 +1,4 @@
 import numpy as np
-import pandas as pd
-from sklearn.datasets import load_iris, load_wine
-from sklearn.model_selection import train_test_split
 
 class Node:  #
     def __init__(self, gini, samples, samples_per_class, predicted_class):
@@ -18,14 +15,20 @@ class Node:  #
 class Decision_Tree:
     def __init__(self, max_depth=None):
         self.max_depth = max_depth
+        self.tree_ = None
 
     def _gini(self, y):
 
-        m = y.size
-        return 1.0 - sum((np.sum(y == c) / m) ** 2 for c in range(self.num_outcomes))
+        outcomes = y.size
+        return 1.0 - sum((np.sum(y == c) / outcomes) ** 2 for c in range(self.num_outcomes))
 
     def find_split(self, X, y):
-
+        """
+        find the feature to use for the next node split
+        and also find where the plit should be in that feature
+        This loops through the split options within a feature to find the best gini score,
+        then it loops through each feature to compare optimal gini scores
+        """
         choices = y.size
         if choices <= 1:
             return None, None
@@ -41,9 +44,9 @@ class Decision_Tree:
         for idx in range(self.num_features):
             splits, options = zip(*sorted(zip(X[:, idx], y)))
 
-            num_left = [0] * self.num_features
+            num_left = [0] * self.num_outcomes
             num_right = options_parent.copy()
-            for i in range(1, m):
+            for i in range(1, choices):
                 c = options[i - 1]
                 num_left[c] += 1
                 num_right[c] -= 1
@@ -54,7 +57,7 @@ class Decision_Tree:
                     (num_right[x] / i) ** 2 for x in range(self.num_outcomes)
                 )
 
-                gini = (i * gini_left + (m - i) * gini_right) / m
+                gini = (i * gini_left + (choices - i) * gini_right) / choices
 
                 if splits[i] == splits[i - 1]:
                     continue
@@ -69,10 +72,16 @@ class Decision_Tree:
     def fit(self, X, y):
         self.num_outcomes = len(set(y))
         self.num_features = X.shape[1]
-        self.tree_ = self.grow_tree(X, y)
+        self.tree_ = self.extd_tree(X, y)
 
     def extd_tree(self, X, y, depth=0):
-        samples_per_class = [np.sum(y == i) for i in range(self.num_features)]
+        '''
+        adds nodes to the tree and splits the data by using the find_split method
+        Continues to grow tree until maximum depth has been reached or
+        until current nodes gini score is higher than remaining split options.
+        '''
+        
+        samples_per_class = [np.sum(y == i) for i in range(self.num_outcomes)]
         predicted_class = np.argmax(samples_per_class)
         node = Node(
             gini=self._gini(y),
@@ -88,10 +97,11 @@ class Decision_Tree:
                 X_left, y_left = X[indices_left], y[indices_left]
                 X_right, y_right = X[~indices_left], y[~indices_left]
                 node.feature_index = idx
-                node.threshold = splt
-                node.left = self._grow_tree(X_left, y_left, depth + 1)
-                node.right = self._grow_tree(X_right, y_right, depth + 1)
+                node.split = splt
+                node.left = self.extd_tree(X_left, y_left, depth + 1)
+                node.right = self.extd_tree(X_right, y_right, depth + 1)
         return node
+
 
     def predict(self, X):
         return [self._predict(inputs) for inputs in X]
@@ -107,10 +117,4 @@ class Decision_Tree:
         return node.predicted_class
 
 
-dataset = load_wine()
-X, y = dataset.data, dataset.target
-X_train, X_test, y_train, y_test = train_test_split(X,y, stratify=y, random_state=42)
-clf_wine = Decision_Tree(max_depth = 5)
-clf_wine.fit(X_train, y_train)
-# preds = clf_wine._predict(X_test, multi_obs=True)
-# print(str(clf_wine))
+
